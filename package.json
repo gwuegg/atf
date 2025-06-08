@@ -1,0 +1,23 @@
+{
+  "name": "atf-clicker",
+  "private": true,
+  "version": "1.0.0",
+  "homepage": ".",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy": "vite build && xcopy /E /I dist . /Y && git add . && git commit -m \"Deploy\" && git push"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "vite": "^4.0.0",
+    "tailwindcss": "^3.3.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0",
+    "browserslist": "^4.21.0"
+  }
+}
