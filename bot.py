@@ -1,63 +1,69 @@
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+import logging
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.enums import ParseMode
+from aiogram.client.default import DefaultBotProperties
+from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 import asyncio
-from game_engine import start_game, get_stats, shop_menu, leaderboard_menu, upgrade_stat, change_skin
-from render import render_game_image
+import json
 
-bot = Bot(token='YOUR_TELEGRAM_BOT_TOKEN')
-dp = Dispatcher(bot)
+TOKEN = "YOUR_BOT_TOKEN"
 
-def main_menu():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🚀 Старт"))
-    kb.add(KeyboardButton("📊 Статистика"), KeyboardButton("🛒 Магазин"))
-    kb.add(KeyboardButton("🏁 Таблица лидеров"), KeyboardButton("🎨 Сменить скин"))
-    return kb
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+dp = Dispatcher(storage=MemoryStorage())
 
-@dp.message_handler(commands=["start"])
-async def cmd_start(message: types.Message):
-    await message.answer("🚚 Добро пожаловать в *ATF Carts*!", parse_mode="Markdown")
-    await message.answer("Нажми кнопку ниже, чтобы начать игру", reply_markup=main_menu())
+STATS_FILE = "stats.json"
 
-@dp.message_handler(lambda m: m.text == "🚀 Старт")
-async def start_game_handler(message: types.Message):
+def load_stats():
+    try:
+        with open(STATS_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_stats(data):
+    with open(STATS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+@dp.message(F.text == "/start")
+async def start_handler(message: types.Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎮 Играть", web_app=WebAppInfo(url="https://yourdomain.com/"))],
+        [InlineKeyboardButton(text="📊 Моя статистика", callback_data="my_stats")]
+    ])
+    await message.answer("Добро пожаловать в <b>ATF Carts</b>!
+Жми кнопку ниже чтобы начать:", reply_markup=kb)
+
+@dp.callback_query(F.data == "my_stats")
+async def stats_handler(callback: types.CallbackQuery):
+    user_id = str(callback.from_user.id)
+    stats = load_stats().get(user_id, {
+        "distance": 0,
+        "tools": 0,
+        "currency": 0
+    })
+    msg = f"📊 <b>Твоя статистика</b>:
+"
+    msg += f"🚚 Пройдено: {stats['distance']}м
+"
+    msg += f"🧰 Инструменты: {stats['tools']}
+"
+    msg += f"💰 Монеты: {stats['currency']}"
+    await callback.message.edit_text(msg)
+
+@dp.message(F.web_app_data)
+async def webapp_data_handler(message: types.Message):
+    data = json.loads(message.web_app_data.data)
     user_id = str(message.from_user.id)
-    result, state = start_game(user_id)
-    img_path = render_game_image(state, user_id)
-    with open(img_path, 'rb') as img:
-        await message.answer_photo(img, caption=result)
-
-@dp.message_handler(lambda m: m.text == "📊 Статистика")
-async def stats_handler(message: types.Message):
-    user_id = str(message.from_user.id)
-    stats = get_stats(user_id)
-    await message.answer(stats)
-
-@dp.message_handler(lambda m: m.text == "🛒 Магазин")
-async def shop_handler(message: types.Message):
-    user_id = str(message.from_user.id)
-    await message.answer(shop_menu(user_id))
-
-@dp.message_handler(lambda m: m.text == "🏁 Таблица лидеров")
-async def leaderboard_handler(message: types.Message):
-    await message.answer(leaderboard_menu())
-
-@dp.message_handler(lambda m: m.text == "🎨 Сменить скин")
-async def skin_handler(message: types.Message):
-    keyboard = InlineKeyboardMarkup()
-    for s in ["default", "gold", "speedster"]:
-        keyboard.add(InlineKeyboardButton(s, callback_data=f"skin_{s}"))
-    await message.answer("Выбери скин:", reply_markup=keyboard)
-
-@dp.callback_query_handler(lambda c: c.data.startswith("skin_"))
-async def change_skin_callback(callback_query: types.CallbackQuery):
-    user_id = str(callback_query.from_user.id)
-    skin = callback_query.data.split("_")[1]
-    msg = change_skin(user_id, skin)
-    await callback_query.message.edit_text(msg)
+    stats = load_stats()
+    stats[user_id] = data
+    save_stats(stats)
+    await message.answer("✅ Прогресс сохранён!")
 
 async def main():
-    await dp.start_polling()
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
